@@ -1,3 +1,4 @@
+import os
 import asyncio
 import colorsys
 import enum
@@ -7,7 +8,7 @@ import time
 import traceback
 import random
 
-SETTINGSFILE = 'joustsettings.yaml'
+SETTINGSFILE = os.path.join(os.path.expanduser('~'), '.config', 'joustsettings.yaml')
 
 #Human speeds[slow, mid, fast]
 SLOW_WARNING = [0.1, 0.15, 0.28]

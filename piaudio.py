@@ -24,8 +24,8 @@ def audio_loop(wav_data, ratio, stop_proc):
     PERIOD_BYTES = PERIOD * 2 * 2
 
     time.sleep(0.5)
-    proc = psutil.Process(os.getpid())
-    proc.nice(-5)
+    # proc = psutil.Process(os.getpid())
+    # proc.nice(-5)
     time.sleep(0.02)
 
     device = alsaaudio.PCM()

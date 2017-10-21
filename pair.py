@@ -1,14 +1,20 @@
 import psmove
 import os
+import time
+
+import dbus
+from multiprocessing import Process, Queue, Manager
+
 import jm_dbus
 
 class Pair():
     """
     Manage paring move controllers to the server
     """
-    def __init__(self):
+    def __init__(self, bus):
         """Use DBus to find bluetooth controllers"""
-        self.hci_dict = jm_dbus.get_hci_dict()
+        self.bus = bus
+        self.hci_dict = jm_dbus.get_hci_dict(bus)
 
         devices = self.hci_dict.values()
         self.bt_devices = {}
@@ -25,22 +31,31 @@ class Pair():
         list of known devices
         """
         for hci, addr in self.hci_dict.items():
-            proxy = jm_dbus.get_adapter_proxy(hci)
+            proxy = jm_dbus.get_adapter_proxy(self.bus, hci)
             devices = jm_dbus.get_node_child_names(proxy)
 
-            self.bt_devices[addr] = jm_dbus.get_attached_addresses(hci)
+            self.bt_devices[addr] = jm_dbus.get_attached_addresses(self.bus, hci)
 
     def update_adapters(self):
         """
         Rescan for bluetooth adapters that may not have existed on program launch
         """
-        self.hci_dict = jm_dbus.get_hci_dict()
+        self.hci_dict = jm_dbus.get_hci_dict(self.bus)
 
         for addr in self.hci_dict.values():
             if addr not in self.bt_devices.keys():
                 self.bt_devices[addr] = []
 
         self.pre_existing_devices()
+
+    def get_all_devices(self):
+        """
+        Get a list of all devices known by the adapters
+        """
+        devices = []
+        for addr in self.bt_devices.keys():
+            devices += self.bt_devices[addr]
+        return devices
 
     def check_if_not_paired(self, addr):
         for devs in self.bt_devices.keys():
@@ -73,52 +88,23 @@ class Pair():
 
         hcis = self.hci_dict.keys()
         for hci in hcis:
-            hci_proxy = jm_dbus.get_adapter_proxy(hci)
+            hci_proxy = jm_dbus.get_adapter_proxy(self.bus, hci)
             devices = jm_dbus.get_node_child_names(hci_proxy)
 
             for dev in devices:
-                jm_dbus.remove_device(hci, dev)
-
-class PairManager():
-    def __init__():
-        self.pair = Pair()
-        self.pair_one_move = True
-        self.paired_moves = []
-        self.tracked_moves = {}
-        self.teams = {}
-
-    def pair_usb_move(self, move):
-        move_serial = move.get_serial()
-        if move_serial not in self.tracked_moves:
-            if move.connection_type == psmove.Conn_USB:
-                if move_serial not in self.paired_moves:
-                    self.pair.pair_move(move)
-                    move.set_leds(255,255,255)
-                    move.update_leds()
-                    self.paired_moves.append(move_serial)
-                    self.pair_one_move = False
-        
-    def pair_move(self, move, move_num):
-        move_serial = move.get_serial()
-        if move_serial not in self.tracked_moves:
-            color = Array('i', [0] * 3)
-            opts = Array('i', [0] * 6)
-            if move_serial in self.teams:
-                opts[Opts.team.value] = self.teams[move_serial]
-            else:
-                #initialize to team Yellow
-                opts[Opts.team.value] = 3 
-            if move_serial in self.out_moves:
-                opts[Opts.alive.value] = self.out_moves[move_serial]
-            opts[Opts.game_mode.value] = self.game_mode.value
-            
-            #now start tracking the move controller
-            proc = Process(target=track_move, args=(move_serial, move_num, opts, color, self.show_battery, self.dead_count))
-            proc.start()
-            self.move_opts[move_serial] = opts
-            self.tracked_moves[move_serial] = proc
-            self.force_color[move_serial] = color
-            self.exclude_out_moves()
+                jm_dbus.remove_device(self.bus, hci, dev)
 
 if __name__ == '__main__':
+    from pair_pairing import pair_thread
+    from pair_dbus import dbus_thread
+    with Manager() as manager:
+        device_list = manager.list()
+        cmd_queue = Queue()
 
+        dbus_proc = Process(target=dbus_thread, args=(cmd_queue, device_list))
+        dbus_proc.start()
+        pair_proc = Process(target=pair_thread, args=(cmd_queue, device_list))
+        pair_proc.start()
+
+        dbus_proc.join()
+        pair_proc.join()

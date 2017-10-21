@@ -1,0 +1,15 @@
+[Unit]
+Description=joustmania-party
+After=network.target
+After=bluetooth.target
+
+[Service]
+Type=simple
+User=joustmania
+WorkingDirectory=/usr/share/joustmania
+ExecStart=/usr/bin/python piparty.py
+TimeoutSec=90
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

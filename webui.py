@@ -69,10 +69,10 @@ class WebUI():
 
 
     def web_loop(self):
-        self.app.run(host='0.0.0.0', port=80, debug=False)
+        self.app.run(host='0.0.0.0', port=3000, debug=False)
 
     def web_loop_with_debug(self):
-        self.app.run(host='0.0.0.0', port=80, debug=True)
+        self.app.run(host='0.0.0.0', port=3000, debug=True)
 
     #@app.route('/')
     def index(self):

@@ -7,7 +7,7 @@ from piaudio import Music, DummyMusic, Audio, InitAudio
 from enum import Enum
 from multiprocessing import Process, Value, Array, Queue, Manager
 from games import ffa
-import jm_dbus
+import dbus, jm_dbus, joust_dbus
 
 
 TEAM_NUM = len(colors.team_color_list)
@@ -52,7 +52,6 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
     move.update_leds()
     random_color = random.random()
 
-    
     while True:
         time.sleep(0.01)
         if move.poll():
@@ -75,15 +74,15 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
                 #show battery level
                 if battery.value == 1:
                     battery_level = move.get_battery()
-                    #granted a charging move should be dead 
+                    #granted a charging move should be dead
                     #so it won't light up anyway
-                    if battery_level == psmove.Batt_CHARGING: 
+                    if battery_level == psmove.Batt_CHARGING:
                         move.set_leds(*colors.Colors.White20.value)
 
-                    elif battery_level == psmove.Batt_CHARGING_DONE: 
+                    elif battery_level == psmove.Batt_CHARGING_DONE:
                         move.set_leds(*colors.Colors.White.value)
 
-                    elif battery_level == psmove.Batt_MAX: 
+                    elif battery_level == psmove.Batt_MAX:
                         move.set_leds(*colors.Colors.Green.value)
 
                     elif battery_level == psmove.Batt_80Percent:
@@ -97,7 +96,7 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
 
                     else : # under 40% - you should charge it!
                         move.set_leds(*colors.Colors.Red.value)
-                    
+
                 #custom team mode is the only game mode that
                 #can't be added to con mode
                 elif game_mode == common.Games.JoustTeams:
@@ -116,7 +115,7 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
 
                 elif game_mode == common.Games.JoustFFA:
                     move.set_leds(*colors.Colors.White.value)
-                            
+
                 elif game_mode == common.Games.JoustRandomTeams:
                     color = time.time()/10%1
                     color = colors.hsv2rgb(color, 1, 1)
@@ -169,14 +168,13 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
 
 
                 elif game_mode == common.Games.Random:
-                    
+
                     if move_button == common.Button.MIDDLE:
                         move_opts[Opts.random_start.value] = Alive.off.value
                     if move_opts[Opts.random_start.value] == Alive.on.value:
                         move.set_leds(0,0,255)
                     else:
                         move.set_leds(255,255,0)
-                    
 
                 if move_opts[Opts.holding.value] == Holding.not_holding.value:
                     #Change game mode and become admin controller
@@ -208,7 +206,6 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
                     if move_button == common.Button.TRIANGLE:
                         move_opts[Opts.selection.value] = Selections.show_battery.value
                         move_opts[Opts.holding.value] = Holding.holding.value
-                    
 
                 if move_button == common.Button.NONE:
                     move_opts[Opts.holding.value] = Holding.not_holding.value
@@ -226,6 +223,10 @@ class Menu():
         self.web_proc = Process(target=webui.start_web, args=(self.command_queue,self.ns))
         self.web_proc.start()
 
+        self.dbus_proc = Process(target=joust_dbus.dbus_thread, args=(self.command_queue,))
+        self.dbus_proc.start()
+        self.bus = dbus.SystemBus()
+
         self.ns.status = dict()
         self.ns.settings = dict()
         self.ns.battery_status = dict()
@@ -238,7 +239,7 @@ class Menu():
 
         self.move_count = psmove.count_connected()
         self.dead_count = Value('i', 0)
-        self.moves = [psmove.PSMove(x) for x in range(psmove.count_connected())]
+        self.add_moves()
         self.admin_move = None
         #move controllers that have been taken out of play
         self.out_moves = {}
@@ -246,17 +247,16 @@ class Menu():
         self.rand_game_list = []
 
         self.show_battery = Value('i', 0)
-        
+
         #only allow one move to be paired at a time
         self.pair_one_move = True
         self.tracked_moves = {}
         self.force_color = {}
-        self.paired_moves = []
         self.move_opts = {}
         self.teams = {}
         self.game_mode = common.Games.Random
         self.old_game_mode = common.Games.Random
-        self.pair = pair.Pair()
+        self.pair = pair.Pair(self.bus)
 
         self.i = 0
         #load audio now so it converts before the game begins
@@ -274,46 +274,50 @@ class Menu():
             self.commander_music = DummyMusic()
 
     def exclude_out_moves(self):
-        for move in self.moves:
-            serial = move.get_serial()
-            if serial in self.move_opts:
-                if self.move_opts[move.get_serial()][Opts.alive.value] == Alive.off.value:
-                    self.out_moves[move.get_serial()] = Alive.off.value
-                else:
-                    self.out_moves[move.get_serial()] = Alive.on.value
+        for _, move in self.moves:
+            if move.this is not None:
+                serial = move.get_serial()
+                if serial in self.move_opts:
+                    if self.move_opts[move.get_serial()][Opts.alive.value] == Alive.off.value:
+                        self.out_moves[move.get_serial()] = Alive.off.value
+                    else:
+                        self.out_moves[move.get_serial()] = Alive.on.value
 
     def check_for_new_moves(self):
+        jm_dbus.unpause_pairing(self.bus)
         self.enable_bt_scanning(True)
         #need to start tracking of new moves in here
         if psmove.count_connected() != self.move_count:
-            self.moves = [psmove.PSMove(x) for x in range(psmove.count_connected())]
-            self.move_count = len(self.moves)
+            self.add_moves()
         #doesn't work
-        #self.alive_count = len([move.get_serial() for move in self.moves if self.move_opts[move.get_serial()][Opts.alive.value] == Alive.on.value])
-        
+        #self.alive_count = len([move.get_serial() for _, move in self.moves if self.move_opts[move.get_serial()][Opts.alive.value] == Alive.on.value])
+
+    def add_moves(self):
+        self.moves = []
+        i = 0
+        search_num = psmove.count_connected()
+        while len(self.moves) < search_num and i < search_num * 40:
+            move = psmove.PSMove(i)
+            if move.this is not None:
+                if move.connection_type != psmove.Conn_USB:
+                    self.moves.append((i, move))
+                else:
+                    search_num -= 1
+            i += 1
+
+        self.move_count = len(self.moves)
 
     def enable_bt_scanning(self, on=True):
-        bt_hcis = list(jm_dbus.get_hci_dict().keys())
+        bt_hcis = list(jm_dbus.get_hci_dict(self.bus).keys())
 
         for hci in bt_hcis:
-            if jm_dbus.enable_adapter(hci):
+            if jm_dbus.enable_adapter(self.bus, hci):
                 self.pair.update_adapters()
             if on:
-                jm_dbus.enable_pairable(hci)
+                jm_dbus.enable_pairable(self.bus, hci)
             else:
-                jm_dbus.disable_pairable(hci)
+                jm_dbus.disable_pairable(self.bus, hci)
 
-    def pair_usb_move(self, move):
-        move_serial = move.get_serial()
-        if move_serial not in self.tracked_moves:
-            if move.connection_type == psmove.Conn_USB:
-                if move_serial not in self.paired_moves:
-                    self.pair.pair_move(move)
-                    move.set_leds(255,255,255)
-                    move.update_leds()
-                    self.paired_moves.append(move_serial)
-                    self.pair_one_move = False
-        
     def pair_move(self, move, move_num):
         move_serial = move.get_serial()
         if move_serial not in self.tracked_moves:
@@ -323,11 +327,11 @@ class Menu():
                 opts[Opts.team.value] = self.teams[move_serial]
             else:
                 #initialize to team Yellow
-                opts[Opts.team.value] = 3 
+                opts[Opts.team.value] = 3
             if move_serial in self.out_moves:
                 opts[Opts.alive.value] = self.out_moves[move_serial]
             opts[Opts.game_mode.value] = self.game_mode.value
-            
+
             #now start tracking the move controller
             proc = Process(target=track_move, args=(move_serial, move_num, opts, color, self.show_battery, self.dead_count))
             proc.start()
@@ -335,7 +339,6 @@ class Menu():
             self.tracked_moves[move_serial] = proc
             self.force_color[move_serial] = color
             self.exclude_out_moves()
-
 
     def game_mode_announcement(self):
         if self.game_mode == common.Games.JoustFFA:
@@ -397,14 +400,12 @@ class Menu():
             self.i=self.i+1
             if not self.pair_one_move and "0" in os.popen('lsusb | grep "PlayStation Move motion controller" | wc -l').read():
                 self.pair_one_move = True
-                self.paired_moves = []
             if self.pair_one_move:
                 if psmove.count_connected() != len(self.tracked_moves):
-                    for move_num, move in enumerate(self.moves):
-                        if move.connection_type == psmove.Conn_USB and self.pair_one_move:
-                            self.pair_usb_move(move)
-                        elif move.connection_type != psmove.Conn_USB:
-                            self.pair_move(move, move_num)
+                    for move_num, move in self.moves:
+                        if move.this is not None:
+                            if move.connection_type != psmove.Conn_USB:
+                                self.pair_move(move, move_num)
                 self.check_for_new_moves()
                 if len(self.tracked_moves) > 0:
                     self.check_change_mode()
@@ -412,7 +413,7 @@ class Menu():
                     self.check_start_game()
                 self.check_command_queue()
                 self.update_status('menu')
-            
+
 
     def check_admin_controls(self):
         show_bat = False
@@ -456,7 +457,7 @@ class Menu():
                         Audio('audio/Menu/mid_sensitivity.wav').start_effect()
                     elif self.ns.settings['sensitivity'] == Sensitivity.fast.value:
                         Audio('audio/Menu/fast_sensitivity.wav').start_effect()
-                
+
             #no admin colors in con custom teams mode
             if self.game_mode == common.Games.JoustTeams or self.game_mode == common.Games.Random:
                 self.force_color[self.admin_move][0] = 0
@@ -491,10 +492,10 @@ class Menu():
                         if self.ns.settings['play_audio']:
                             Audio('audio/Menu/game_err.wav').start_effect()
                     self.update_settings_file()
-            
+
     def initialize_settings(self):
         #default settings
-        temp_settings = ({ 
+        temp_settings = ({
             'sensitivity': Sensitivity.mid.value,
             'play_instructions': True,
             #we store the name, not the enum, so the webui can process it more easily
@@ -548,7 +549,7 @@ class Menu():
             'enforce_minimum': True
         })
         self.ns.settings = temp_settings
-    
+
     def update_settings_file(self):
         with open(common.SETTINGSFILE,'w') as yaml_file:
             yaml.dump(self.ns.settings,yaml_file)
@@ -570,8 +571,37 @@ class Menu():
             command = package['command']
             if command == 'admin_update':
                 self.web_admin_update(package['admin_info'])
+            elif command == 'clear_all_devices':
+                self.clear_all_devices()
+            elif command == 'request_pairing':
+                self.pairing_requested()
             else:
                 self.command_from_web = command
+
+    def pairing_requested(self):
+        """Wait until pairing is complete before leaving this function"""
+        jm_dbus.permit_pairing(self.bus)
+
+        commands = 0
+        while commands < 100: # Try at most 100 commands from command queue
+            try:
+                package = self.command_queue.get(True, 10) # wait at most 10 seconds for pair
+                if package['command'] == 'pair_complete':
+                    return
+                else:
+                    self.command_queue.put(package)
+            except:
+                return # we waited 10 seconds and that's bad
+
+            commands += 1
+
+    def clear_all_devices(self):
+        self.stop_tracking_moves()
+        self.moves = []
+        self.move_count = 0
+        self.tracked_moves = {}
+        self.teams = {}
+        jm_dbus.handle_clear_all_devices(self.bus)
 
     def update_status(self,game_status):
         self.ns.status ={
@@ -583,9 +613,10 @@ class Menu():
         }
 
         battery_status = {}
-        for move in self.moves:
-            move.poll()
-            battery_status[move.get_serial()] = move.get_battery()
+        for _, move in self.moves:
+            if move.this is not None:
+                move.poll()
+                battery_status[move.get_serial()] = move.get_battery()
         self.ns.battery_status = battery_status
 
         self.ns.out_moves = self.out_moves
@@ -594,7 +625,7 @@ class Menu():
         for proc in self.tracked_moves.values():
             proc.terminate()
             proc.join()
-            
+
     def check_start_game(self):
         if self.game_mode == common.Games.Random:
             self.exclude_out_moves()
@@ -607,11 +638,9 @@ class Menu():
                     self.random_added.append(serial)
                     if self.ns.settings['play_audio']:
                         Audio('audio/Joust/sounds/start.wav').start_effect()
-            
-                    
+
             if start_game:
                 self.start_game(random_mode=True)
-                
 
         else:
             if self.ns.settings['move_can_be_admin']:
@@ -644,12 +673,13 @@ class Menu():
 
 
     def start_game(self, random_mode=False):
+        jm_dbus.pause_pairing(self.bus)
         self.enable_bt_scanning(False)
         self.exclude_out_moves()
         self.stop_tracking_moves()
         time.sleep(0.2)
         self.teams = {serial: self.move_opts[serial][Opts.team.value] for serial in self.tracked_moves.keys() if self.out_moves[serial] == Alive.on.value}
-        game_moves = [move.get_serial() for move in self.moves if self.out_moves[move.get_serial()] == Alive.on.value]
+        game_moves = [move.get_serial() for _, move in self.moves if self.out_moves[move.get_serial()] == Alive.on.value]
 
 
         if len(game_moves) < self.game_mode.minimum_players and self.ns.settings['enforce_minimum']:
@@ -683,7 +713,7 @@ class Menu():
 
         if self.ns.settings['play_instructions'] and self.ns.settings['play_audio']:
             self.play_random_instructions()
-        
+
         if self.game_mode == common.Games.Zombies:
             zombie.Zombie(game_moves, self.command_queue, self.ns, self.zombie_music)
             self.tracked_moves = {}
@@ -716,10 +746,10 @@ class Menu():
                     Audio('audio/Menu/tradeoff2.wav').start_effect_and_wait()
         #reset music
         self.choose_new_music()
-        #turn off admin mode so someone can't accidentally press a button    
+        #turn off admin mode so someone can't accidentally press a button
         self.admin_move = None
         self.random_added = []
-            
+
 if __name__ == "__main__":
     InitAudio()
     piparty = Menu()

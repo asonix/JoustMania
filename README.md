@@ -55,7 +55,7 @@ git clone https://github.com/adangert/JoustMania.git
 cd JoustMania
 sudo ./setup.sh
 ```
-If you have the bluetooth adapters, disable the on-board bluetooth 
+If you have the bluetooth adapters, disable the on-board bluetooth
 ```
 sudo ./disable_internal_bluetooth.sh
 ```
@@ -79,7 +79,7 @@ Pairing controllers
 If pairing is not working for some reason, or you would like to resync all controllers run the following
 ```
 cd ~/JoustMania/
-./reset_bluetooth_connections.sh
+python clear-devices.py
 ```
 
 How to select a game mode
@@ -113,11 +113,11 @@ Custom Music
 ---------------------------------
 * JoustMania comes with a couple of pre-installed default songs.
 * Play your own music, by copying it into the respective folders: /audio/(Joust, Zombie, Commander)/music/
-* Supports Mp3, Wav, Ogg, flac and others [Here](http://www.ffmpeg.org/general.html#File-Formats), 
+* Supports Mp3, Wav, Ogg, flac and others [Here](http://www.ffmpeg.org/general.html#File-Formats),
 * All music and audio can be disabled by changing `audio = False` in joustconfig.ini, this will also disable tempo sensitivity changes for each game mode
 
 
-# Game Rules and Variants 
+# Game Rules and Variants
 * Keep your controller still while trying to jostle others.
 * If your controller is jostled, then you are out of the game!
 * The music is tied to the gameplay, the faster the music the faster you can move
@@ -165,8 +165,8 @@ Custom Music
  * Humans can shoot random zombies with bullets
  * Bullets are randomly assigned as loot from killing zombies
  * Humans try to survive for a couple of minutes, otherwise zombies win!
- 
- 
+
+
  ### Commander (Minimum 4+ players, 6+ players recommended)
  * Players are split into two teams
  * One commander is chosen for each side, if this commander dies, the other team wins
@@ -187,7 +187,7 @@ Custom Music
 
  ### Ninja Bomb (2+ players)
  * Players stand in a circle each holding a controller
- * Players press A to join the game. 
+ * Players press A to join the game.
  * A bomb is passed around by pressing the A button, if held too long it will explode
  * Players can try to pass a traps in order to fake out their opponents.
  * If a player presses A or trigger while holding a trap, they explode

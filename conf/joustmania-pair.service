@@ -1,0 +1,15 @@
+[Unit]
+Description=joustmania-pair
+After=network.target
+After=bluetooth.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/usr/share/joustmania
+ExecStart=/usr/bin/python pair.py
+TimeoutSec=90
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

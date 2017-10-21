@@ -4,7 +4,8 @@ After=network.target
 After=bluetooth.target
 
 [Service]
-Type=simple
+Type=dbus
+BusName=com.joustmania.party
 User=joustmania
 WorkingDirectory=/usr/share/joustmania
 ExecStart=/usr/bin/python piparty.py

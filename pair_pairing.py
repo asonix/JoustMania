@@ -20,7 +20,7 @@ def psmove_connect(move, cmd_queue, device_list, p):
 
         for m in moves:
             if m.get_serial().upper() == connected_move:
-                pair(m, p)
+                pair(m, p, bus, cmd_queue)
 
     p.update_adapters()
 
@@ -31,7 +31,7 @@ def psmove_connect(move, cmd_queue, device_list, p):
 
     print('connect complete')
 
-def pair(m, p):
+def pair(m, p, bus, cmd_queue):
     print('pairing')
     try:
         jm_dbus.request_pairing(bus)
@@ -39,7 +39,7 @@ def pair(m, p):
             if cmd_queue.get() == 'pairing_permitted':
                 break
     except dbus.exceptions.DBusException as e:
-        if 'ServiceUnknown' not in str(e):
+        if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
             raise e
     p.pair_move(m)
     m.set_leds(255,255,255)
@@ -47,7 +47,7 @@ def pair(m, p):
     try:
         jm_dbus.pair_complete(bus)
     except dbus.exceptions.DBusException as e:
-        if 'ServiceUnknown' not in str(e):
+        if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
             raise e
 
 def psmove_disconnect(move, device_list, p):
@@ -79,7 +79,7 @@ def pair_thread(cmd_queue, device_list):
     prev_running = False
     running = True
     while True:
-        time.sleep(0.1)
+        time.sleep(1.0)
         p.pre_existing_devices()
         if len(p.get_all_devices()) != len(device_list):
             print('device list', device_list)

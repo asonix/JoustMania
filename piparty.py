@@ -287,7 +287,7 @@ class Menu():
         try:
             jm_dbus.unpause_pairing(self.bus)
         except dbus.exceptions.DBusException as e:
-            if 'ServiceUnknown' not in str(e):
+            if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
                 raise e
 
         self.enable_bt_scanning(True)
@@ -588,7 +588,7 @@ class Menu():
         try:
             jm_dbus.permit_pairing(self.bus)
         except dbus.exceptions.DBusException as e:
-            if 'ServiceUnknown' not in str(e):
+            if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
                 raise e
 
         commands = 0
@@ -685,7 +685,7 @@ class Menu():
         try:
             jm_dbus.pause_pairing(self.bus)
         except dbus.exceptions.DBusException as e:
-            if 'ServiceUnknown' not in str(e):
+            if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
                 raise e
 
         self.enable_bt_scanning(False)

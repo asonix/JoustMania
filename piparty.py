@@ -215,6 +215,7 @@ def track_move(serial, move_num, move_opts, force_color, battery, dead_count):
 
 class Menu():
     def __init__(self):
+        self.pairing = True
 
         self.command_queue = Queue()
         self.joust_manager = Manager()
@@ -284,11 +285,13 @@ class Menu():
                         self.out_moves[move.get_serial()] = Alive.on.value
 
     def check_for_new_moves(self):
-        try:
-            jm_dbus.unpause_pairing(self.bus)
-        except dbus.exceptions.DBusException as e:
-            if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
-                raise e
+        if not self.pairing:
+            try:
+                self.pairing = True
+                jm_dbus.unpause_pairing(self.bus)
+            except dbus.exceptions.DBusException as e:
+                if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
+                    raise e
 
         self.enable_bt_scanning(True)
         #need to start tracking of new moves in here
@@ -682,11 +685,13 @@ class Menu():
 
 
     def start_game(self, random_mode=False):
-        try:
-            jm_dbus.pause_pairing(self.bus)
-        except dbus.exceptions.DBusException as e:
-            if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
-                raise e
+        if self.pairing:
+            try:
+                self.pairing = False
+                jm_dbus.pause_pairing(self.bus)
+            except dbus.exceptions.DBusException as e:
+                if 'ServiceUnknown' not in str(e) and 'AccessDenied' not in str(e):
+                    raise e
 
         self.enable_bt_scanning(False)
         self.exclude_out_moves()

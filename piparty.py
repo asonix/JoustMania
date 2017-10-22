@@ -284,7 +284,12 @@ class Menu():
                         self.out_moves[move.get_serial()] = Alive.on.value
 
     def check_for_new_moves(self):
-        jm_dbus.unpause_pairing(self.bus)
+        try:
+            jm_dbus.unpause_pairing(self.bus)
+        except dbus.exceptions.DBusException as e:
+            if 'ServiceUnknown' not in str(e):
+                raise e
+
         self.enable_bt_scanning(True)
         #need to start tracking of new moves in here
         if psmove.count_connected() != self.move_count:
@@ -580,7 +585,11 @@ class Menu():
 
     def pairing_requested(self):
         """Wait until pairing is complete before leaving this function"""
-        jm_dbus.permit_pairing(self.bus)
+        try:
+            jm_dbus.permit_pairing(self.bus)
+        except dbus.exceptions.DBusException as e:
+            if 'ServiceUnknown' not in str(e):
+                raise e
 
         commands = 0
         while commands < 100: # Try at most 100 commands from command queue
@@ -673,7 +682,12 @@ class Menu():
 
 
     def start_game(self, random_mode=False):
-        jm_dbus.pause_pairing(self.bus)
+        try:
+            jm_dbus.pause_pairing(self.bus)
+        except dbus.exceptions.DBusException as e:
+            if 'ServiceUnknown' not in str(e):
+                raise e
+
         self.enable_bt_scanning(False)
         self.exclude_out_moves()
         self.stop_tracking_moves()

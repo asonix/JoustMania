@@ -7,8 +7,10 @@ After=bluetooth.target
 Type=dbus
 BusName=com.joustmania.party
 User=joustmania
+RuntimeDirectory=joustmania-party
 WorkingDirectory=/usr/share/joustmania
-ExecStart=/usr/bin/python piparty.py
+Environment=XDG_RUNTIME_DIR=/run/joustmania-party
+ExecStart=/usr/bin/python /usr/share/joustmania/piparty.py
 TimeoutSec=90
 Restart=always
 

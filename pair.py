@@ -3,7 +3,8 @@ import os
 import time
 
 import dbus
-from multiprocessing import Process, Queue, Manager
+from multiprocessing import Queue, Manager
+from threading import Thread
 
 import jm_dbus
 
@@ -97,14 +98,15 @@ class Pair():
 if __name__ == '__main__':
     from pair_pairing import pair_thread
     from pair_dbus import dbus_thread
+
     with Manager() as manager:
         device_list = manager.list()
         cmd_queue = Queue()
 
-        dbus_proc = Process(target=dbus_thread, args=(cmd_queue, device_list))
-        dbus_proc.start()
-        pair_proc = Process(target=pair_thread, args=(cmd_queue, device_list))
-        pair_proc.start()
+        dbus_thread = Thread(target=dbus_thread, args=(cmd_queue, device_list))
+        dbus_thread.start()
+        pair_thread = Thread(target=pair_thread, args=(cmd_queue, device_list))
+        pair_thread.start()
 
-        dbus_proc.join()
-        pair_proc.join()
+        dbus_thread.join()
+        pair_thread.join()
